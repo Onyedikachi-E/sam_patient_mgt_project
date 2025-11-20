@@ -132,7 +132,16 @@ class DatabaseManager:
     ):
         self.database_url = database_url
         self.db_name = db_name
-        self.engine = create_engine(self.database_url, echo=False, future=True, connect_args={"ssl": {"ssl-mode": "REQUIRED"}})
+        self.engine = create_engine(
+            self.database_url, 
+            echo=False, 
+            future=True, 
+            pool_pre_ping=True,                 
+            pool_size=5,                        
+            max_overflow=10,                    
+            pool_timeout=30,                    
+            pool_recycle=1800,
+            connect_args={"ssl": {"ssl-mode": "REQUIRED"}})
 
     def create_databse(self):
         server_url = self.database_url.rsplit("/", 1)[0]
