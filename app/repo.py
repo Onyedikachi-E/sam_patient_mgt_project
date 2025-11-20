@@ -91,7 +91,10 @@ class PatientARTCRUD:
                 return None if (col not in row or pd.isna(row[col])) else row[col]
             for _, row in dataframe.iterrows():
                 # Basic safety: skip if essential identifier missing
-                if pd.isna(row["hospital_number"]) and pd.isna(row["patient_identifier"]):
+                if pd.isna(row["patient_identifier"]):
+                    continue
+                # Skip if patient record already exist
+                if self.get_patient_by_identifier(row["patient_identifier"]):
                     continue
 
                 patient = PatientARTData(
