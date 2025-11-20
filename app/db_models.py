@@ -8,7 +8,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-import pymysql
+import pymysql, os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Database setup
 Base = declarative_base()
@@ -125,8 +127,8 @@ class PatientARTData(Base):
 class DatabaseManager:
     def __init__(
         self,
-        database_url: str = "mysql+pymysql://admin:Admin123@localhost/patient_art_data_db",  
-        db_name: str = "patient_art_data_db",
+        database_url: str = os.getenv("DATABASE_URL"),  
+        db_name: str = os.getenv("DATABASE_NAME"),
     ):
         self.database_url = database_url
         self.db_name = db_name
