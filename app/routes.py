@@ -87,7 +87,7 @@ def get_patient_by_identifier(
 # 1. Get ALL patients
 # ============================================================
 @router.get(
-    "/identifiers",
+    "/identifiers/all",
     summary="Get all patient identifiers",
     description="Fetch paginated list of all patients' DATIM codes and identifiers",
 )
