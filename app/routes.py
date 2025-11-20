@@ -86,6 +86,28 @@ def get_patient_by_identifier(
 # ============================================================
 # 1. Get ALL patients
 # ============================================================
+@router.get(
+    "/identifiers",
+    summary="Get all patient identifiers",
+    description="Fetch paginated list of all patients' DATIM codes and identifiers",
+)
+def get_all_patient_identifiers(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(db_manager.get_session),
+):
+    try:
+        patient_manager = PatientARTCRUD(db_manager=db)
+        identifiers = patient_manager.get_all_patient_identifiers(skip=skip, limit=limit)
+        return [
+            {"datim_code": d, "patient_identifier": pid}
+            for d, pid in identifiers
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error fetching all patient identifiers -> {e}",
+        )
 
 @router.get(
     "/",
@@ -279,4 +301,26 @@ def restore_patient(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to restore patient -> {e}"
+        )
+    
+
+@router.delete(
+    "/all",
+    summary="Delete ALL patient records",
+    description="⚠️ Irreversibly deletes all patient records from the patient_art_data table",
+)
+def drop_all_patients(
+    db: Session = Depends(db_manager.get_session),
+):
+    try:
+        patient_manager = PatientARTCRUD(db_manager=db)
+        deleted = patient_manager.drop_all_patients()
+        return {
+            "message": "All patient records deleted successfully",
+            "total_deleted": deleted,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error deleting all patient records -> {e}",
         )

@@ -6,6 +6,7 @@ from fastapi import UploadFile, HTTPException, status
 from io import BytesIO
 import pandas as pd
 from .schemas import PatientARTCreate, PatientARTUpdate
+from sqlalchemy import delete
 
 
 
@@ -189,6 +190,23 @@ class PatientARTCRUD:
             return patient
         except:
             raise
+
+    def get_all_patient_identifiers(self, skip, limit):
+        """Get all patient records"""
+        try:
+            query = (
+                self.db_manager
+                .query(PatientARTData.datim_code, PatientARTData.patient_identifier)
+                .offset(skip)
+                .limit(limit)
+            )
+            patients = query.all()
+            return patients
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Error fetching all patients records -> {str(e)})"
+            )
     
 
     def get_all_patients(self, skip, limit) -> List[PatientARTData]:
@@ -323,6 +341,29 @@ class PatientARTCRUD:
         except Exception as e:
             self.db_manager.rollback()
             print(f"✗ Error restoring patient: {str(e)}")
+            raise
+
+
+    def drop_all_patients(self) -> int:
+        """
+        Delete ALL patient records from patient_art_data table.
+
+        Returns:
+            int: number of rows deleted
+        """
+        try:
+            # For SQLAlchemy 1.4+ using the Core delete
+            stmt = delete(PatientARTData)
+            result = self.db_manager.execute(stmt)
+            self.db_manager.commit()
+
+            deleted_count = result.rowcount or 0
+            print(f"✓ Deleted {deleted_count} patient records")
+            return deleted_count
+
+        except Exception as e:
+            self.db_manager.rollback()
+            print(f"✗ Error deleting all patient records: {str(e)}")
             raise
     
     
