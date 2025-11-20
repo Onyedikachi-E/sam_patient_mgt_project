@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
 from schemas import PatientARTResponse, PatientARTUpdate, PatientARTCreate
-from db_models import DatabaseManager
-from repo import PatientARTCRUD
+from .db_models import DatabaseManager
+from .repo import PatientARTCRUD
 from typing import List, Optional
 db_manager = DatabaseManager()
 
