@@ -305,7 +305,7 @@ def restore_patient(
     
 
 @router.delete(
-    "/all",
+    "/delete/all",
     summary="Delete ALL patient records",
     description="⚠️ Irreversibly deletes all patient records from the patient_art_data table",
 )
