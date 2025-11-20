@@ -132,13 +132,9 @@ class DatabaseManager:
     ):
         self.database_url = database_url
         self.db_name = db_name
-        self.engine = create_engine(self.database_url, echo=False, future=True)
+        self.engine = create_engine(self.database_url, echo=False, future=True, connect_args={"ssl": {"ssl-mode": "REQUIRED"}})
 
     def create_databse(self):
-        """
-        database_url: e.g. "mysql+pymysql://admin:Admin123@localhost/patient_art_data_db"
-        db_name:      e.g. "patient_art_data_db"
-        """
         server_url = self.database_url.rsplit("/", 1)[0]
         server_engine = create_engine(server_url, echo=False, future=True)
 
@@ -170,3 +166,4 @@ if __name__ == "__main__":
     db_manager = DatabaseManager()
     db_manager.create_databse()
     
+
