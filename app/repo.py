@@ -199,7 +199,7 @@ class PatientARTCRUD:
         try:
             query = (
                 self.db_manager
-                .query(PatientARTData.datim_code, PatientARTData.patient_identifier)
+                .query(PatientARTData.datim_code, PatientARTData.patient_identifier).filter(PatientARTData.voided==False)
                 .offset(skip)
                 .limit(limit)
             )
@@ -215,7 +215,7 @@ class PatientARTCRUD:
     def get_all_patients(self, skip, limit) -> List[PatientARTData]:
         """Get all patient records"""
         try:
-            query = self.db_manager.query(PatientARTData).offset(skip).limit(limit)
+            query = self.db_manager.query(PatientARTData).filter(PatientARTData.voided==False).offset(skip).limit(limit)
             
             patients = query.all()
             return patients
@@ -230,7 +230,7 @@ class PatientARTCRUD:
         """Get all patients from a specific facility using datim code"""
         try:
             query = self.db_manager.query(PatientARTData).filter(
-                PatientARTData.datim_code == datim_code
+                PatientARTData.datim_code == datim_code, PatientARTData.voided==False
             ).offset(skip).limit(limit)
             
             patients = query.all()
@@ -243,7 +243,7 @@ class PatientARTCRUD:
         """Get all patients from a specific state"""
         try:
             query = self.db_manager.query(PatientARTData).filter(
-                PatientARTData.state == state
+                PatientARTData.state == state, PatientARTData.voided==False
             ).offset(skip).limit(limit)
             
             patients = query.all()
@@ -261,7 +261,7 @@ class PatientARTCRUD:
         try:
             patient = self.db_manager.query(PatientARTData).filter(
                 PatientARTData.patient_identifier == patient_identifier,
-                PatientARTData.voided == 0
+                PatientARTData.voided == False
             ).first()
             
             if not patient:
@@ -291,7 +291,7 @@ class PatientARTCRUD:
         try:
             patient = self.db_manager.query(PatientARTData).filter(
                 PatientARTData.patient_identifier == patient_identifier,
-                PatientARTData.voided == 0
+                PatientARTData.voided == False
             ).first()
             
             if not patient:
