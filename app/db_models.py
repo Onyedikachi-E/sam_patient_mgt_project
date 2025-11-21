@@ -6,6 +6,7 @@ Complete CRUD operations with soft delete functionality
 from sqlalchemy import create_engine, Column, Integer, String, Date, Text, DateTime, TIMESTAMP, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import pymysql, os
@@ -136,12 +137,10 @@ class DatabaseManager:
             self.database_url, 
             echo=False, 
             future=True, 
-            pool_pre_ping=True,                 
-            pool_size=5,                        
-            max_overflow=10,                    
-            pool_timeout=30,                    
-            pool_recycle=1800,
-            connect_args={"ssl": {"ssl-mode": "REQUIRED"}})
+            poolclass=NullPool,
+            connect_args={"ssl": {"ssl-mode": "REQUIRED"}},
+            connect_timeout=10,
+        )
 
     def create_databse(self):
         server_url = self.database_url.rsplit("/", 1)[0]
