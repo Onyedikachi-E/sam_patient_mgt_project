@@ -138,8 +138,7 @@ class DatabaseManager:
             echo=False, 
             future=True, 
             poolclass=NullPool,
-            connect_args={"ssl": {"ssl-mode": "REQUIRED"}},
-            connect_timeout=10,
+            connect_args={"ssl": {"ssl-mode": "REQUIRED"}, "connect_timeout": 10}
         )
 
     def create_databse(self):
