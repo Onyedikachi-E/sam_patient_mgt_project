@@ -562,9 +562,9 @@ class PatientARTCRUD:
             line_list_data = (
                 self.db_manager
                 .query(LineListRequest)
+                .order_by(LineListRequest.request_date.desc())
                 .offset(skip)
                 .limit(limit)
-                .order_by(LineListRequest.request_date.desc())
                 .all()
             )
 
