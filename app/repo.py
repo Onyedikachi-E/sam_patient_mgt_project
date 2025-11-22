@@ -553,7 +553,7 @@ class PatientARTCRUD:
             )
         
 
-    def get_line_list_requests(self) -> List["LineListRequestResponse"]:
+    def get_line_list_requests(self, skip, limit) -> List["LineListRequestResponse"]:
         """
         Fetch all line list export requests from the database,
         ordered by most recent request date.
@@ -562,6 +562,8 @@ class PatientARTCRUD:
             line_list_data = (
                 self.db_manager
                 .query(LineListRequest)
+                .offset(skip)
+                .limit(limit)
                 .order_by(LineListRequest.request_date.desc())
                 .all()
             )

@@ -104,8 +104,8 @@ def get_all_patient_identifiers(
         patient_manager = PatientARTCRUD(db_manager=db)
         identifiers = patient_manager.get_all_patient_identifiers(skip=skip, limit=limit)
         return [
-            {"datim_code": d, "patient_identifier": pid}
-            for d, pid in identifiers
+            {"state": s, "datim_code": d, "patient_identifier": pid}
+            for s, d, pid in identifiers
         ]
     except Exception as e:
         raise HTTPException(
@@ -398,11 +398,13 @@ def request_line_list_export(
     summary="Fetch all the request records for line lists generation"
 )
 def get_line_list_requests(
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(db_manager.get_session),
 ):
     try:
         patient_manager = PatientARTCRUD(db_manager=db)
-        line_list_requests = patient_manager.get_line_list_requests()
+        line_list_requests = patient_manager.get_line_list_requests(skip, limit)
 
         return line_list_requests
     except Exception as e:
