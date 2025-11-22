@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, BackgroundTasks, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from .schemas import PatientARTResponse, PatientARTUpdate, PatientARTCreate
-from .db_models import DatabaseManager
+from .schemas import PatientARTResponse, PatientARTUpdate, PatientARTCreate, LineListRequestResponse
+from .db_models import DatabaseManager, LineListRequest
 from .repo import PatientARTCRUD
 from typing import List, Optional
+from datetime import datetime
+import uuid, os
+from io import BytesIO
 db_manager = DatabaseManager()
 
 
@@ -62,7 +66,7 @@ def create_patient(
     
 
 @router.get(
-    "/{patient_identifier}",
+    "/patient_identifier",
     response_model=Optional[PatientARTResponse],
     summary="Get complete patient information by patient identifier",
     description="This route is to be used to fetch all information about a patient"
@@ -136,7 +140,7 @@ def get_all_patients(
 # ============================================================
 
 @router.get(
-    "/facility/{datim_code}",
+    "/facility/datim_code",
     response_model=List[PatientARTResponse],
     summary="Get all patients by facility",
     description="Fetch all patients linked to a specific facility using DATIM code",
@@ -165,13 +169,13 @@ def get_patients_by_facility(
 # ============================================================
 
 @router.get(
-    "/state/{state}",
+    "/state/state_name",
     response_model=List[PatientARTResponse],
     summary="Get all patients by state",
     description="Fetch all patients mapped to a specific state",
 )
 def get_patients_by_state(
-    state: str,
+    state_name: str,
     skip: int = 0,
     limit: int = 0,
     db: Session = Depends(db_manager.get_session),
@@ -179,7 +183,7 @@ def get_patients_by_state(
     try:
         patient_manager = PatientARTCRUD(db_manager=db)
         patients = patient_manager.get_patients_by_state(
-            state, skip, limit
+            state_name, skip, limit
         )
         return patients
     except Exception as e:
@@ -193,7 +197,7 @@ def get_patients_by_state(
 # 4. UPDATE patient
 # ============================================================
 @router.put(
-    "/{patient_identifier}",
+    "/patient_identifier",
     response_model=PatientARTResponse,
     summary="Update a patient record",
     description="Update an existing patient record using patient identifier",
@@ -230,7 +234,7 @@ def update_patient(
 
 
 @router.delete(
-    "/{patient_identifier}",
+    "/patient_identifier",
     summary="Soft delete (void) a patient record",
     description="Marks a patient record as voided instead of deleting it permanently",
 )
@@ -270,7 +274,7 @@ def soft_delete_patient(
 # ============================================================
 
 @router.post(
-    "/{patient_identifier}/restore",
+    "/patient_identifier/restore",
     summary="Restore a voided patient record",
     description="Unvoids a previously voided patient record",
 )
@@ -324,3 +328,129 @@ def drop_all_patients(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error deleting all patient records -> {e}",
         )
+    
+
+EXPORT_DIR = "exports"
+os.makedirs(EXPORT_DIR, exist_ok=True)
+def _background_generate_line_list(
+    db_session_factory,
+    request_id: str,
+    datim_code: str | None,
+):
+    # Create a new session inside background task
+    db: Session = db_session_factory()
+    try:
+        patient_manager = PatientARTCRUD(db_manager=db)
+        excel_bytes = patient_manager.generate_patient_line_list(datim_code=datim_code)
+        
+        # fetch the request record
+        request_record = db.query(LineListRequest).filter(LineListRequest.request_id==request_id).first()
+
+        file_content = excel_bytes.getvalue()
+        request_record.file_data=file_content
+        request_record.file_size = len(file_content)
+        request_record.request_status="Completed"
+        db.commit()
+        print(f"✓ Export stored in database for request {request_id}")
+    finally:
+        db.close()
+
+
+@router.post(
+    "/line-list/export",
+    summary="Request patient line list export",
+    description="Triggers background generation of the patient line list. Returns a job id.",
+)
+def request_line_list_export(
+    background_tasks: BackgroundTasks,
+    datim_code: str | None = Query(default=None),
+    db: Session = Depends(db_manager.get_session),
+):
+    # Generate a job ID
+    request_id = str(uuid.uuid4())
+
+    # schedule background work
+    background_tasks.add_task(
+        _background_generate_line_list,
+        db_manager.get_session, 
+        request_id,
+        datim_code,
+    )
+
+    new_request = LineListRequest(
+        request_id=request_id,
+        requested_by_id="SUPER USER",
+        request_date=datetime.now(),
+        request_status="Processing"
+    )
+    db.add(new_request)
+    db.commit()
+
+    return {
+        "message": "Export started",
+        "request_id": request_id,
+    }
+
+
+@router.get(
+    "/line-list/requests/all",
+    response_model=List[LineListRequestResponse],
+    summary="Fetch all the request records for line lists generation"
+)
+def get_line_list_requests(
+    db: Session = Depends(db_manager.get_session),
+):
+    try:
+        patient_manager = PatientARTCRUD(db_manager=db)
+        line_list_requests = patient_manager.get_line_list_requests()
+
+        return line_list_requests
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error: -> {str(e)}"
+        )
+
+
+
+@router.get(
+    "/line-list/download/request_id",
+    summary="Download generated patient line list",
+)
+def download_line_list(request_id: str, db: Session = Depends(db_manager.get_session),):
+    request_record = db.query(LineListRequest).filter(
+        LineListRequest.request_id == request_id
+    ).first()
+
+    if request_record.request_status != "Completed":
+        raise HTTPException(status_code=400, detail="Export not ready yet")
+
+    # Create a file-like object from the binary data
+    file_stream = BytesIO(request_record.file_data)
+    file_stream.seek(0)
+
+    return StreamingResponse(
+        content=file_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=patient_line_list.xlsx"}
+    )
+
+
+@router.get(
+    "/line-list/template",
+    summary="Download empty patient line list template for import",
+    description="Generate and download an empty Excel template for patient line list upload",
+)
+def download_line_list_template(
+    db: Session = Depends(db_manager.get_session),
+):
+    patient_manager = PatientARTCRUD(db_manager=db)
+    excel_file = patient_manager.generate_empty_line_list_template()
+
+    return StreamingResponse(
+        excel_file,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="patient_line_list_template.xlsx"'
+        },
+    )

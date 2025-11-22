@@ -3,8 +3,9 @@ Patient ART Data Management System using SQLAlchemy
 Complete CRUD operations with soft delete functionality
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Date, Text, DateTime, TIMESTAMP, text
+from sqlalchemy import create_engine, Column, Integer, String, Date, Text, DateTime, TIMESTAMP, text, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 from datetime import datetime
@@ -120,6 +121,18 @@ class PatientARTData(Base):
             'updated_at': self.updated_at
         }
     
+
+class LineListRequest(Base):
+    __tablename__ = 'line_list_request'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(String(255), nullable=False)
+    requested_by_id = Column(String(50), nullable=True)
+    request_date = Column(TIMESTAMP, nullable=False, default=datetime.now)
+    request_status = Column(String(50), default="Processing")
+    file_data = Column(LONGBLOB, nullable=True)
+    file_size = Column(Integer, nullable=True)
+
 
 
 # =============================================

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel
 
@@ -158,3 +158,14 @@ class PatientARTUpdate(BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+
+class LineListRequestResponse(BaseModel):
+    request_id: str
+    requested_by: str
+    request_date: str
+    request_status: str
+
+    class Config:
+        from_attributes = True

@@ -1,12 +1,15 @@
-from .db_models import DatabaseManager, PatientARTData
+from .db_models import PatientARTData, LineListRequest
 from typing import Any, Dict, Optional, List
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException, status
 from io import BytesIO
 import pandas as pd
-from .schemas import PatientARTCreate, PatientARTUpdate
+from .schemas import PatientARTCreate, LineListRequestResponse
 from sqlalchemy import delete
+from openpyxl.styles import Border, Side
+from openpyxl.styles import Border, Side, Alignment
+from openpyxl import load_workbook
 
 
 
@@ -94,7 +97,11 @@ class PatientARTCRUD:
                 if pd.isna(row["patient_identifier"]):
                     continue
                 # Skip if patient record already exist
-                if self.get_patient_by_identifier(row["patient_identifier"]):
+                patient_exist = self.db_manager.query(
+                    PatientARTData
+                ).filter(PatientARTData.patient_identifier==get_val(row, "patient_identifier")
+                ).first()
+                if patient_exist:
                     continue
 
                 patient = PatientARTData(
@@ -189,6 +196,13 @@ class PatientARTCRUD:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Specified Patient Identifier not found"
                 )
+            # Compute and attach current ART status
+            patient.clients_current_art_status = self.get_art_outcome(
+                last_pickup_date=patient.last_drug_pick_up_date,
+                days_of_arv_refill=patient.no_of_days_of_refills,
+                ltfu_days=28,
+                end_date=date.today(),
+            )
 
             return patient
         except:
@@ -199,7 +213,11 @@ class PatientARTCRUD:
         try:
             query = (
                 self.db_manager
-                .query(PatientARTData.datim_code, PatientARTData.patient_identifier).filter(PatientARTData.voided==False)
+                .query(
+                    PatientARTData.state,
+                    PatientARTData.datim_code, 
+                    PatientARTData.patient_identifier)
+                .filter(PatientARTData.voided==False)
                 .offset(skip)
                 .limit(limit)
             )
@@ -218,7 +236,17 @@ class PatientARTCRUD:
             query = self.db_manager.query(PatientARTData).filter(PatientARTData.voided==False).offset(skip).limit(limit)
             
             patients = query.all()
-            return patients
+            list_of_patients: List[PatientARTData] = []
+            for patient in patients:
+                patient.clients_current_art_status = self.get_art_outcome(
+                    last_pickup_date=patient.last_drug_pick_up_date,
+                    days_of_arv_refill=patient.no_of_days_of_refills,
+                    ltfu_days=28,
+                    end_date=date.today(),
+                )
+                list_of_patients.append(patient)
+                
+            return list_of_patients
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -234,7 +262,17 @@ class PatientARTCRUD:
             ).offset(skip).limit(limit)
             
             patients = query.all()
-            return patients
+            list_of_patients: List[PatientARTData] = []
+            for patient in patients:
+                patient.clients_current_art_status = self.get_art_outcome(
+                    last_pickup_date=patient.last_drug_pick_up_date,
+                    days_of_arv_refill=patient.no_of_days_of_refills,
+                    ltfu_days=28,
+                    end_date=date.today(),
+                )
+                list_of_patients.append(patient)
+                
+            return list_of_patients
         finally:
             self.db_manager.close()
     
@@ -247,7 +285,17 @@ class PatientARTCRUD:
             ).offset(skip).limit(limit)
             
             patients = query.all()
-            return patients
+            list_of_patients: List[PatientARTData] = []
+            for patient in patients:
+                patient.clients_current_art_status = self.get_art_outcome(
+                    last_pickup_date=patient.last_drug_pick_up_date,
+                    days_of_arv_refill=patient.no_of_days_of_refills,
+                    ltfu_days=28,
+                    end_date=date.today(),
+                )
+                list_of_patients.append(patient)
+                
+            return list_of_patients
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -368,5 +416,302 @@ class PatientARTCRUD:
             self.db_manager.rollback()
             print(f"✗ Error deleting all patient records: {str(e)}")
             raise
+
+
     
+    def generate_patient_line_list(
+            self,  
+            datim_code: Optional[str] = None
+        ) -> BytesIO:
+        """
+        Generate patient line list from the database.
+        Args:
+            datim_code (str, optional): Filter by facility DATIM code
+        Returns:
+            BytesIO: An in-memory Excel file containing the line list
+        """
+        try:
+            # Base query: only non-voided
+            query = (
+                self.db_manager
+                .query(PatientARTData).filter(PatientARTData.voided == False)
+            )
+
+            # Optional filter by datim_code
+            if datim_code:
+                query = query.filter(PatientARTData.datim_code == datim_code)
+
+            patients_list: List[PatientARTData] = query.all()
+            list_of_patients: List[PatientARTData] = []
+            for patient in patients_list:
+                patient.clients_current_art_status = self.get_art_outcome(
+                    last_pickup_date=patient.last_drug_pick_up_date,
+                    days_of_arv_refill=patient.no_of_days_of_refills,
+                    ltfu_days=28,
+                    end_date=date.today(),
+                )
+                list_of_patients.append(patient)
+
+            # Define the exact columns / headers as in your Excel
+            columns = [
+                "state",
+                "lga",
+                "facility_name_all",
+                "datim_code",
+                "sex",
+                "hospital_number",
+                "patient_identifier",
+                "current_age",
+                "date_of_birth",
+                "care_entry_point",
+                "art_start_date",
+                "age_at_art_initiation",
+                "clients_current_art_status",
+                "educational_status",
+                "residential_address",
+                "last_drug_pick_up_date",
+                "last_viral_load_result",
+                "cd4_test_cd4_result",
+                "adherence_outcome_classification",
+                "marital_status",
+                "employment_status",
+                "no_of_days_of_refills",
+                "who_stage_at_art_start",
+                "last_drug_art_pick_up_date",
+                "duration_on_art_months",
+                "previous_art_regimen",
+                "current_art_regimen",
+                "current_art_regimen_line",
+                "last_viral_load_sample_collection_date",
+                "last_viral_load_result_date",
+                "cd4_test_sample_collection_date",
+                "cd4_test_result_date",
+                "date",
+                "signature",
+                "comment",
+                "suggestion",
+            ]
+
+            # Build rows from ORM objects
+            data = []
+            for p in list_of_patients:
+                row = {
+                    "state": p.state,
+                    "lga": p.lga,
+                    "facility_name_all": p.facility_name_all,
+                    "datim_code": p.datim_code,
+                    "sex": p.sex,
+                    "hospital_number": p.hospital_number,
+                    "patient_identifier": p.patient_identifier,
+                    "current_age": p.current_age,
+                    "date_of_birth": p.date_of_birth,
+                    "care_entry_point": p.care_entry_point,
+                    "art_start_date": p.art_start_date,
+                    "age_at_art_initiation": p.age_at_art_initiation,
+                    "clients_current_art_status": p.clients_current_art_status,
+                    "educational_status": p.educational_status,
+                    "residential_address": p.residential_address,
+                    "last_drug_pick_up_date": p.last_drug_pick_up_date,
+                    "last_viral_load_result": p.last_viral_load_result,
+                    "cd4_test_cd4_result": p.cd4_test_cd4_result,
+                    "adherence_outcome_classification": p.adherence_outcome_classification,
+                    "marital_status": p.marital_status,
+                    "employment_status": p.employment_status,
+                    "no_of_days_of_refills": p.no_of_days_of_refills,
+                    "who_stage_at_art_start": p.who_stage_at_art_start,
+                    "last_drug_art_pick_up_date": p.last_drug_art_pick_up_date,
+                    "duration_on_art_months": p.duration_on_art_months,
+                    "previous_art_regimen": p.previous_art_regimen,
+                    "current_art_regimen": p.current_art_regimen,
+                    "current_art_regimen_line": p.current_art_regimen_line,
+                    "last_viral_load_sample_collection_date": p.last_viral_load_sample_collection_date,
+                    "last_viral_load_result_date": p.last_viral_load_result_date,
+                    "cd4_test_sample_collection_date": p.cd4_test_sample_collection_date,
+                    "cd4_test_result_date": p.cd4_test_result_date,
+                    "date": getattr(p, "date", None),
+                    "signature": p.signature,
+                    "comment": p.comment,
+                    "suggestion": p.suggestion,
+                }
+                data.append(row)
+
+            # Create DataFrame with the defined column order
+            df = pd.DataFrame(data, columns=columns)
+
+            # Write to an in-memory Excel file
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Patient Line List")
+            output.seek(0)
+
+            return output
+        except Exception as e:
+            print(f"✗ Error generating patient line list: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error generating patient line list -> {str(e)}",
+            )
+        
+
+    def get_line_list_requests(self) -> List["LineListRequestResponse"]:
+        """
+        Fetch all line list export requests from the database,
+        ordered by most recent request date.
+        """
+        try:
+            line_list_data = (
+                self.db_manager
+                .query(LineListRequest)
+                .order_by(LineListRequest.request_date.desc())
+                .all()
+            )
+
+            line_list_requests = [
+                LineListRequestResponse(
+                    request_id=req.request_id,
+                    requested_by=req.requested_by_id,
+                    request_date=req.request_date.strftime("%Y-%m-%d %H:%M:%S"),
+                    request_status=req.request_status,
+                )
+                for req in line_list_data
+            ]
+
+            return line_list_requests
+        except Exception as e:
+            print(f"✗ Error fetching line list requests: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error fetching line list requests -> {str(e)}",
+            )
+        
+
+    def get_art_outcome(
+        self,
+        last_pickup_date: Optional[date],
+        days_of_arv_refill: Optional[int],
+        ltfu_days: int = 28,
+        end_date: Optional[date] = None,
+    ) -> str:
+        """
+        Python equivalent of MySQL getoutcome function.
+        Args:
+            last_pickup_date: DATE of last ARV pickup
+            days_of_arv_refill: Number of days of ARV refilled at last pickup
+            ltfu_days: Grace period in days for LTFU (default 28)
+            end_date: Reference date (default: today's date)
+        Returns:
+            "Active", "InActive", or "" (if last_pickup_date is None)
+        """
+        # enddate is current date if not provided
+        if end_date is None:
+            end_date = date.today()
+
+        if last_pickup_date is None:
+            return "No last pickup date"
+
+        if days_of_arv_refill is None:
+            days_of_arv_refill = 0
+
+        ltfunumber = days_of_arv_refill + ltfu_days
+        ltfu_date = last_pickup_date + timedelta(days=ltfunumber)
+        daysdiff = (ltfu_date - end_date).days
+
+        # IF(daysdiff >=0,'Active','InActive')
+        if daysdiff >= 0:
+            return "Active"
+        else:
+            return "Inactive"
     
+
+    def generate_empty_line_list_template(self) -> BytesIO:
+        """
+        Generate an empty Excel template for patient line list upload.
+        - Adds thin borders around cells from row 1 to row 10.
+        - Wraps text in the header row (row 1).
+        Returns:
+            BytesIO: in-memory Excel file with headers and styling.
+        """
+        try:
+            columns = [
+                "state",
+                "lga",
+                "facility_name_all",
+                "datim_code",
+                "sex",
+                "hospital_number",
+                "patient_identifier",
+                "current_age",
+                "date_of_birth",
+                "care_entry_point",
+                "art_start_date",
+                "age_at_art_initiation",
+                "clients_current_art_status",
+                "educational_status",
+                "residential_address",
+                "last_drug_pick_up_date",
+                "last_viral_load_result",
+                "cd4_test_cd4_result",
+                "adherence_outcome_classification",
+                "marital_status",
+                "employment_status",
+                "no_of_days_of_refills",
+                "who_stage_at_art_start",
+                "last_drug_art_pick_up_date",
+                "duration_on_art_months",
+                "previous_art_regimen",
+                "current_art_regimen",
+                "current_art_regimen_line",
+                "last_viral_load_sample_collection_date",
+                "last_viral_load_result_date",
+                "cd4_test_sample_collection_date",
+                "cd4_test_result_date",
+                "date",
+                "signature",
+                "comment",
+                "suggestion",
+            ]
+
+            # Empty DataFrame with headers
+            df = pd.DataFrame(columns=columns)
+
+            # First write with pandas
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Patient Line List Template")
+
+            # Style with openpyxl
+            output.seek(0)
+            wb = load_workbook(output)
+            ws = wb.active  # "Patient Line List Template"
+
+            # Thin border
+            thin = Side(border_style="thin", color="000000")
+            border = Border(top=thin, left=thin, right=thin, bottom=thin)
+
+            max_col = ws.max_column
+            start_row = 1
+            end_row = 10
+
+            # Apply borders rows 1–10
+            for row in range(start_row, end_row + 1):
+                for col in range(1, max_col + 1):
+                    cell = ws.cell(row=row, column=col)
+                    cell.border = border
+
+                    # Wrap header row (row 1)
+                    if row == 1:
+                        cell.alignment = Alignment(wrap_text=True)
+
+            # Save back to BytesIO
+            styled_output = BytesIO()
+            wb.save(styled_output)
+            styled_output.seek(0)
+
+            return styled_output
+
+        except Exception as e:
+            print(f"✗ Error generating empty line list template: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error generating patient line list template -> {e}",
+            )
