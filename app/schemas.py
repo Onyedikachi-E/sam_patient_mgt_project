@@ -155,7 +155,9 @@ class PatientARTUpdate(BaseModel):
     last_viral_load_result_date: Optional[date] = None
     cd4_test_sample_collection_date: Optional[date] = None
     cd4_test_result_date: Optional[date] = None
-
+    signature: Optional[str] = None
+    comment: Optional[str] = None
+    suggestion: Optional[str] = None
     class Config:
         extra = "forbid"
 
