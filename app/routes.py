@@ -314,11 +314,12 @@ def restore_patient(
     description="⚠️ Irreversibly deletes all patient records from the patient_art_data table",
 )
 def drop_all_patients(
+    datim_code: str | None = Query(default=None, description="If provided, only deletes patients from the specified facility"),
     db: Session = Depends(db_manager.get_session),
 ):
     try:
         patient_manager = PatientARTCRUD(db_manager=db)
-        deleted = patient_manager.drop_all_patients()
+        deleted = patient_manager.drop_all_patients(datim_code=datim_code)
         return {
             "message": "All patient records deleted successfully",
             "total_deleted": deleted,

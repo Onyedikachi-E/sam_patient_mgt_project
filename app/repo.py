@@ -395,16 +395,18 @@ class PatientARTCRUD:
             raise
 
 
-    def drop_all_patients(self) -> int:
+    def drop_all_patients(self, datim_code: Optional[str] = None) -> int:
         """
         Delete ALL patient records from patient_art_data table.
-
         Returns:
             int: number of rows deleted
         """
         try:
             # For SQLAlchemy 1.4+ using the Core delete
-            stmt = delete(PatientARTData)
+            if datim_code:
+                stmt = delete(PatientARTData).where(PatientARTData.datim_code==datim_code)
+            else:
+                stmt = delete(PatientARTData)
             result = self.db_manager.execute(stmt)
             self.db_manager.commit()
 
